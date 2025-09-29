@@ -5693,45 +5693,140 @@
                     ${createMetricRow('Lowest Win Rate', lowestWinRate ? `${lowestWinRate.symbol} (${lowestWinRate.winRate.toFixed(1)}%)` : '—', 'text-red-500')}
                 `;
 
-                // 7. Capital Usage Card
-                const capitalUsed = closed.map(t => t.entry_price * (t.quantity || 0));
-                const maxCapital = Math.max(...capitalUsed, 0);
-                const minCapital = Math.min(...capitalUsed, 0);
-                const avgCapitalUsed = capitalUsed.length ? capitalUsed.reduce((a, b) => a + b, 0) / capitalUsed.length : 0;
-                
-                // Find P&L at max and min capital
-                const maxCapitalTrade = closed.find(t => (t.entry_price * (t.quantity || 0)) === maxCapital);
-                const minCapitalTrade = closed.find(t => (t.entry_price * (t.quantity || 0)) === minCapital);
-                const pnlAtMaxCapital = maxCapitalTrade ? (maxCapitalTrade.exit_price - maxCapitalTrade.entry_price) * (maxCapitalTrade.quantity || 0) : 0;
-                const pnlAtMinCapital = minCapitalTrade ? (minCapitalTrade.exit_price - minCapitalTrade.entry_price) * (minCapitalTrade.quantity || 0) : 0;
+                // 7. Capital Usage Card - Flawless Implementation
+                if (closed.length === 0) {
+                    // Handle empty trades case
+                    document.getElementById('capital-usage-metrics').innerHTML = `
+                        ${createMetricRow('Maximum', '—')}
+                        ${createMetricRow('Minimum', '—')}
+                        ${createMetricRow('Average', '—')}
+                        ${createMetricRow('P&L at Max Capital', '—')}
+                        ${createMetricRow('P&L at Min Capital', '—')}
+                    `;
+                } else {
+                    // Filter valid trades with proper data validation
+                    const validTrades = closed.filter(t => 
+                        t.entry_price && 
+                        t.quantity && 
+                        !isNaN(t.entry_price) && 
+                        !isNaN(t.quantity) && 
+                        t.entry_price > 0 && 
+                        t.quantity > 0
+                    );
+                    
+                    if (validTrades.length === 0) {
+                        // Handle case where no trades have valid data
+                        document.getElementById('capital-usage-metrics').innerHTML = `
+                            ${createMetricRow('Maximum', '—')}
+                            ${createMetricRow('Minimum', '—')}
+                            ${createMetricRow('Average', '—')}
+                            ${createMetricRow('P&L at Max Capital', '—')}
+                            ${createMetricRow('P&L at Min Capital', '—')}
+                        `;
+                    } else {
+                        // Calculate capital usage with validated data
+                        const capitalUsed = validTrades.map(t => t.entry_price * t.quantity);
+                        const maxCapital = Math.max(...capitalUsed);
+                        const minCapital = Math.min(...capitalUsed);
+                        const avgCapitalUsed = capitalUsed.reduce((a, b) => a + b, 0) / capitalUsed.length;
+                        
+                        // Find trades with max and min capital (handle multiple trades with same capital)
+                        const maxCapitalTrades = validTrades.filter(t => (t.entry_price * t.quantity) === maxCapital);
+                        const minCapitalTrades = validTrades.filter(t => (t.entry_price * t.quantity) === minCapital);
+                        
+                        // Find the most profitable trade at max capital (best performance)
+                        const maxCapitalTrade = maxCapitalTrades.reduce((best, current) => {
+                            const bestPnl = calculateNetPnl(best);
+                            const currentPnl = calculateNetPnl(current);
+                            return currentPnl > bestPnl ? current : best;
+                        }, maxCapitalTrades[0]);
+                        
+                        // Find the most profitable trade at min capital (best performance)
+                        const minCapitalTrade = minCapitalTrades.reduce((best, current) => {
+                            const bestPnl = calculateNetPnl(best);
+                            const currentPnl = calculateNetPnl(current);
+                            return currentPnl > bestPnl ? current : best;
+                        }, minCapitalTrades[0]);
+                        
+                        // Calculate P&L using consistent calculateNetPnl function
+                        const pnlAtMaxCapital = calculateNetPnl(maxCapitalTrade);
+                        const pnlAtMinCapital = calculateNetPnl(minCapitalTrade);
 
-                document.getElementById('capital-usage-metrics').innerHTML = `
-                    ${createMetricRow('Maximum', formatCurrency(maxCapital))}
-                    ${createMetricRow('Minimum', formatCurrency(minCapital))}
-                    ${createMetricRow('Average', formatCurrency(avgCapitalUsed))}
-                    ${createMetricRow('P&L at Max Capital', formatCurrency(pnlAtMaxCapital), pnlAtMaxCapital >= 0 ? 'text-green-500' : 'text-red-500')}
-                    ${createMetricRow('P&L at Min Capital', formatCurrency(pnlAtMinCapital), pnlAtMinCapital >= 0 ? 'text-green-500' : 'text-red-500')}
-                `;
+                        document.getElementById('capital-usage-metrics').innerHTML = `
+                            ${createMetricRow('Maximum', formatCurrency(maxCapital))}
+                            ${createMetricRow('Minimum', formatCurrency(minCapital))}
+                            ${createMetricRow('Average', formatCurrency(avgCapitalUsed))}
+                            ${createMetricRow('P&L at Max Capital', formatCurrency(pnlAtMaxCapital), pnlAtMaxCapital >= 0 ? 'text-green-500' : 'text-red-500')}
+                            ${createMetricRow('P&L at Min Capital', formatCurrency(pnlAtMinCapital), pnlAtMinCapital >= 0 ? 'text-green-500' : 'text-red-500')}
+                        `;
+                    }
+                }
 
-                // 8. Quantity Analysis Card
-                const quantities = closed.map(t => t.quantity || 0);
-                const maxQty = Math.max(...quantities, 0);
-                const minQty = Math.min(...quantities, 0);
-                const avgQty = quantities.length ? quantities.reduce((a, b) => a + b, 0) / quantities.length : 0;
-                
-                // Find P&L at max and min quantity
-                const maxQtyTrade = closed.find(t => (t.quantity || 0) === maxQty);
-                const minQtyTrade = closed.find(t => (t.quantity || 0) === minQty);
-                const pnlAtMaxQty = maxQtyTrade ? (maxQtyTrade.exit_price - maxQtyTrade.entry_price) * (maxQtyTrade.quantity || 0) : 0;
-                const pnlAtMinQty = minQtyTrade ? (minQtyTrade.exit_price - minQtyTrade.entry_price) * (minQtyTrade.quantity || 0) : 0;
+                // 8. Quantity Analysis Card - Flawless Implementation
+                if (closed.length === 0) {
+                    // Handle empty trades case
+                    document.getElementById('quantity-analysis-metrics').innerHTML = `
+                        ${createMetricRow('Maximum', '—')}
+                        ${createMetricRow('Minimum', '—')}
+                        ${createMetricRow('Average', '—')}
+                        ${createMetricRow('P&L at Max Qty', '—')}
+                        ${createMetricRow('P&L at Min Qty', '—')}
+                    `;
+                } else {
+                    // Filter valid trades with proper data validation
+                    const validTrades = closed.filter(t => 
+                        t.quantity && 
+                        !isNaN(t.quantity) && 
+                        t.quantity > 0
+                    );
+                    
+                    if (validTrades.length === 0) {
+                        // Handle case where no trades have valid quantity data
+                        document.getElementById('quantity-analysis-metrics').innerHTML = `
+                            ${createMetricRow('Maximum', '—')}
+                            ${createMetricRow('Minimum', '—')}
+                            ${createMetricRow('Average', '—')}
+                            ${createMetricRow('P&L at Max Qty', '—')}
+                            ${createMetricRow('P&L at Min Qty', '—')}
+                        `;
+                    } else {
+                        // Calculate quantity analysis with validated data
+                        const quantities = validTrades.map(t => t.quantity);
+                        const maxQty = Math.max(...quantities);
+                        const minQty = Math.min(...quantities);
+                        const avgQty = quantities.reduce((a, b) => a + b, 0) / quantities.length;
+                        
+                        // Find trades with max and min quantity (handle multiple trades with same quantity)
+                        const maxQtyTrades = validTrades.filter(t => t.quantity === maxQty);
+                        const minQtyTrades = validTrades.filter(t => t.quantity === minQty);
+                        
+                        // Find the most profitable trade at max quantity (best performance)
+                        const maxQtyTrade = maxQtyTrades.reduce((best, current) => {
+                            const bestPnl = calculateNetPnl(best);
+                            const currentPnl = calculateNetPnl(current);
+                            return currentPnl > bestPnl ? current : best;
+                        }, maxQtyTrades[0]);
+                        
+                        // Find the most profitable trade at min quantity (best performance)
+                        const minQtyTrade = minQtyTrades.reduce((best, current) => {
+                            const bestPnl = calculateNetPnl(best);
+                            const currentPnl = calculateNetPnl(current);
+                            return currentPnl > bestPnl ? current : best;
+                        }, minQtyTrades[0]);
+                        
+                        // Calculate P&L using consistent calculateNetPnl function
+                        const pnlAtMaxQty = calculateNetPnl(maxQtyTrade);
+                        const pnlAtMinQty = calculateNetPnl(minQtyTrade);
 
-                document.getElementById('quantity-analysis-metrics').innerHTML = `
-                    ${createMetricRow('Maximum', maxQty.toLocaleString())}
-                    ${createMetricRow('Minimum', minQty.toLocaleString())}
-                    ${createMetricRow('Average', Math.round(avgQty).toLocaleString())}
-                    ${createMetricRow('P&L at Max Qty', formatCurrency(pnlAtMaxQty), pnlAtMaxQty >= 0 ? 'text-green-500' : 'text-red-500')}
-                    ${createMetricRow('P&L at Min Qty', formatCurrency(pnlAtMinQty), pnlAtMinQty >= 0 ? 'text-green-500' : 'text-red-500')}
-                `;
+                        document.getElementById('quantity-analysis-metrics').innerHTML = `
+                            ${createMetricRow('Maximum', maxQty.toLocaleString())}
+                            ${createMetricRow('Minimum', minQty.toLocaleString())}
+                            ${createMetricRow('Average', Math.round(avgQty).toLocaleString())}
+                            ${createMetricRow('P&L at Max Qty', formatCurrency(pnlAtMaxQty), pnlAtMaxQty >= 0 ? 'text-green-500' : 'text-red-500')}
+                            ${createMetricRow('P&L at Min Qty', formatCurrency(pnlAtMinQty), pnlAtMinQty >= 0 ? 'text-green-500' : 'text-red-500')}
+                        `;
+                    }
+                }
 
                 // 9. Weekday Avg R:R Card
                 const weekdayRR = {};
